@@ -1,0 +1,30 @@
+#!/usr/bin/env perl
+
+use strict;
+use warnings;
+
+# read a directory full of timestamps compared with a directory full of configs
+
+# status is the worst of all results
+# OVERALL CASES
+#  WARNING either directory does not exist
+#  WARNING either directory not readable
+#  WARNING either directory contains no files
+
+# PER TIMESTAMP CASES
+#       OK config file exists, timestamp in OK range
+#  WARNING timestamp exists, no config file
+#  WARNING config file is unreadable 
+#  WARNING syntax error in config file
+#  WARNING config file exists, no timestamp
+# CRITICAL config file exists, timestamp aged enough for warning
+# CRITICAL config file exists, timestamp aged enough for critical
+
+# Config format. Must have warning AND/OR critical. name is optional
+# time age is a positive integer followed by s, m, h, d, w
+
+# warning: 10m
+# critical: 3h
+# name: alternative name for this timestamp
+
+
