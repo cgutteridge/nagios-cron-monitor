@@ -1,15 +1,58 @@
 #!/usr/bin/env perl
 
+use Data::Dumper;
+
 use strict;
 use warnings;
 
-# read a directory full of timestamps compared with a directory full of configs
+sub CRITICAL { 2 }
+sub WARNING { 1 } 
+sub OK { 0 }
+sub UNKNOWN { 3 }
 
-# status is the worst of all results
+# read a directory full of timestamps compared with a directory full of configs
+# should be passed options specifying a time-stamp dir and a config dir
+
+
+# Config format. 
+# UTF-8 assumed.
+# Must have (WARNING: <time> and/or CRITCIAL: <time>) or an IGNORE statement. NAME is optional
+# time age is a positive integer followed by s, m, h, d, w
+
+# CRITICAL: 10m
+# WARNING: 3h
+# IGNORE
+# NAME: Update users nightly
+
+
+# Final status is the worst of all results. All per-file issues also reported to stderr.
+
 # OVERALL CASES
-#  WARNING either directory does not exist
-#  WARNING either directory not readable
+# CRITICAL incorrect options 
+# CRITICAL either directory does not exist
+# CRITICAL either directory not readable
 #  WARNING either directory contains no files
+
+my $issues = [];
+
+if( scalar @ARGV != 2 ) {
+	exitOutcome( CRITICAL, "[sys] Command expects two directories to be specified" );
+}	
+
+my( $tdir, $cdir ) = @ARGV;
+if( !-d $tdir ) { 
+	exitOutcome( CRITICAL, "[sys] Timestamp directory '$tdir' is not a directory" );
+}	
+if( !-d $cdir ) { 
+	exitOutcome( CRITICAL, "[sys] Config directory '$cdir' is not a directory" );
+}	
+if( !-r $tdir ) { 
+	exitOutcome( CRITICAL, "[sys] Timestamp directory '$tdir' is not readable" );
+}	
+if( !-r $cdir ) { 
+	exitOutcome( CRITICAL, "[sys] Config directory '$cdir' is not readable" );
+}	
+
 
 # PER TIMESTAMP CASES
 #       OK config file exists, timestamp in OK range
@@ -17,14 +60,226 @@ use warnings;
 #  WARNING config file is unreadable 
 #  WARNING syntax error in config file
 #  WARNING config file exists, no timestamp
-# CRITICAL config file exists, timestamp aged enough for warning
+#  WARNING config file exists, timestamp aged enough for warning
 # CRITICAL config file exists, timestamp aged enough for critical
 
-# Config format. Must have warning AND/OR critical. name is optional
-# time age is a positive integer followed by s, m, h, d, w
 
-# warning: 10m
-# critical: 3h
-# name: alternative name for this timestamp
 
+my $dh;
+# Read modification times of timestamps
+my $ages = {};
+opendir( $dh, $tdir );
+while( my $file = readdir( $dh ) ) {
+	my $full_file = $tdir . "/". $file;
+
+	next if( ! -f $full_file );
+
+	$ages->{$file} = time() - mtime( $full_file );
+}
+closedir($dh);
+
+my $configs = {};
+opendir( $dh, $cdir );
+while( my $file = readdir( $dh ) ) {
+	my $full_file = $cdir . "/". $file;
+
+	next if( !-f $full_file );
+
+	if( !-r $full_file ) {
+		push @$issues, { file=>$file, code=>WARNING, message=>"Could not read $full_file" };
+		next;
+	}
+
+	my $config = readConfig( $full_file );
+	if( !defined $config ) {
+		push @$issues, { file=>$file, code=>WARNING, message=>"Could not parse '$file' config" };
+		next;
+	}
+
+	$configs->{$file} = $config;
+}
+closedir($dh);
+
+my $ok = 0;
+foreach my $file ( keys %$ages ) {
+	if( ! defined $configs->{$file} ) {
+		push @$issues, { file=>$file, code=>WARNING, message=>"No config file for timestamp '$file'" };
+		next;
+	}
+	my $config = $configs->{$file};
+	delete $configs->{$file};
+	my $age = $ages->{$file};
+
+	if( defined $config->{IGNORE} ) {
+		# don't actually check timestamps marked IGNORE
+		next;
+	}
+
+	my $name = $file;
+	if( defined $config->{NAME} ) {
+		$name = $config->{NAME};
+	}
+	if( defined $config->{CRITICAL} && $config->{CRITICAL} < $age ) {
+		push @$issues, { file=>$file, code=>CRITICAL, message=>"$name has not updated for ".(timeDescription($age))." (CRITICAL at ".(timeDescription($config->{CRITICAL})).")" };
+		next;
+	}
+	if( defined $config->{WARNING} && $config->{WARNING} < $age ) {
+		push @$issues, { file=>$file, code=>WARNING, message=>"$name has not updated for ".(timeDescription($age))." (WARNING at ".(timeDescription($config->{WARNING})).")" };
+		next;
+	}
+
+	$ok++;
+}
+# only configs left are those without a matching timestamp
+foreach my $file ( keys %$configs ) {
+	push @$issues, { file=>$file, code=>WARNING, message=>"No timestamp file for config '$file'" };
+}
+
+my $worst = { code=>OK, message=>"Checked $ok timestamps" };
+my $counts = [0,0,0,0];
+foreach my $issue ( @$issues ) {
+	print STDERR codeLabel( $issue->{code} ).": ".$issue->{message}."\n";
+	$counts->[$issue->{code}]++;	
+	if( $issue->{code} > $worst->{code} ) {
+		$worst = $issue;
+	}
+}
+my $extra = "";
+if( $counts->[1]+$counts->[2]+$counts->[3] > 1 ) {
+	if( $counts->[3] > 0 ) { $extra .= ", ".$counts->[3]." UNKNOWN"; }
+	if( $counts->[2] > 0 ) { $extra .= ", ".$counts->[2]." CRITICAL"; }
+	if( $counts->[1] > 0 ) { $extra .= ", ".$counts->[1]." WARNING"; }
+}
+
+exitOutcome( $worst->{code}, $worst->{message}.$extra );
+
+exit 0;
+
+sub readConfig
+{
+	my( $filename ) = @_;
+
+	my $config = {};
+	open( my $fh, "<:utf8", $filename );
+	my @lines = <$fh>;
+	close( $fh );
+
+	my $line_number = 0;	
+	foreach my $line ( @lines ) {
+		$line_number++;
+
+		# remove whitespace and comments
+		chomp $line;
+		$line =~ s/^\s+//;
+		$line =~ s/\s+$//;
+		$line =~ s/\s*#.*$//;
+		next if( $line eq "" );
+
+		my $parsed = $line =~ m/^([A-Z]+)\s*(:\s*(.*))?$/;
+		if( !$parsed ) {
+			print STDERR "Could not parse line $line_number of $filename.\n";
+			return undef;
+		}
+
+		my( $term, $value ) = ( $1, $3 );
+		# validate line
+		if( $term eq "IGNORE" ) {
+			if( defined $value ) {
+				# not really a problem so warn to stderr but move on
+				print STDERR "IGNORE does not require a value at line $line_number of $filename.\n";
+			}
+			$value = 1;
+		} elsif( $term eq "NAME" ) { 
+			if( !defined $value ) {
+				print STDERR "NAME requires a value at line $line_number of $filename.\n";
+				return undef;
+			}
+		} elsif( $term eq "WARNING" || $term eq "CRITICAL" ) {
+			if( !defined $value ) {
+				print STDERR "$term requires a value at line $line_number of $filename.\n";
+				return undef;
+			}
+			my $seconds = parseTime( $value );
+			if( !defined $seconds ) {
+				print STDERR "$term has invalid time value at line $line_number of $filename.\n";
+				return undef;
+			}
+			$value = $seconds;		
+		} else {
+			# not actually a problem so warn to stderr but move on
+			print STDERR "Unknown term $term at line $line_number of $filename.\n";
+			return undef;
+		}
+		$config->{$term} = $value;
+	}
+	return $config;
+}	
+
+sub parseTime 
+{
+	my( $string ) = @_;
+
+	my $match = $string=~m/^(\d+)\s*([smhdw])$/;
+	if( !$match ) { 
+		return undef;
+	}
+
+	my( $number, $units ) = ( $1, $2 );
+
+	my $factor;
+	$factor->{s} = 1;
+	$factor->{m} = $factor->{s}*60;
+	$factor->{h} = $factor->{m}*60;
+	$factor->{d} = $factor->{h}*24;
+	$factor->{w} = $factor->{d}*7;
+
+	return $number * $factor->{$units};
+}
+
+sub timeDescription
+{
+	my( $seconds ) = @_;
+
+	return $seconds." secs" if( $seconds < 60*3 );
+	my $minutes = int $seconds/60;
+	return $minutes." mins" if( $minutes < 60*3 );
+	my $hours = int $minutes/60;
+	return $hours." hrs" if( $hours < 24*3 );
+	my $days = int $hours/24;
+	return $days." days";
+}
+
+
+sub exitOutcome
+{
+	my( $code, $message ) = @_;
+
+	my $label = codeLabel( $code );
+	if( !defined $label ) {
+		$label = "UNKNOWN";
+		$code = 3;
+		$message = "Bad code passed to exitOutcome()";
+	}
+
+	print "$label: $message\n";
+	exit( $code );
+}
+
+sub mtime
+{
+	my( $filename ) = @_;
+
+	my @s = stat($filename);
+	return $s[9];
+}
+
+sub codeLabel { 
+	my( $code ) = @_;
+
+	return "OK" if( $code eq "0" );
+	return "WARNING" if( $code eq "1" );
+	return "CRITICAL" if( $code eq "2" );
+	return "UNKNOWN" if( $code eq "3" );
+	return undef;
+}
 
