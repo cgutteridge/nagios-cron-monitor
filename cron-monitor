@@ -23,7 +23,7 @@ sub UNKNOWN { 3 }
 # WARNING: 3h
 # IGNORE
 # NAME: Update users nightly
-
+# HOURS: 10,1-4
 
 # Final status is the worst of all results. All per-file issues also reported to stderr.
 
@@ -119,6 +119,8 @@ foreach my $file ( keys %$ages ) {
 	if( defined $config->{NAME} ) {
 		$name = $config->{NAME};
 	}
+
+	# If "hours" have been set, and the age is less than the end of the most recent h
 	if( defined $config->{CRITICAL} && $config->{CRITICAL} < $age ) {
 		push @$issues, { file=>$file, code=>CRITICAL, message=>"$name has not updated for ".(timeDescription($age))." (CRITICAL at ".(timeDescription($config->{CRITICAL})).")" };
 		next;
@@ -204,7 +206,18 @@ sub readConfig
 				print STDERR "$term has invalid time value at line $line_number of $filename.\n";
 				return undef;
 			}
-			$value = $seconds;		
+			$value = $seconds;
+		} elsif( $term eq "HOURS" ) {
+			if( !defined $value ) {
+				print STDERR "$term requires a value at line $line_number of $filename.\n";
+				return undef;
+			}
+			my $hours = parseHours( $value );
+			if( !defined $hours ) {
+				print STDERR "$term has invalid hours value at line $line_number of $filename.\n";
+				return undef;
+			}
+			$value = $hours;
 		} else {
 			# not actually a problem so warn to stderr but move on
 			print STDERR "Unknown term $term at line $line_number of $filename.\n";
@@ -212,8 +225,53 @@ sub readConfig
 		}
 		$config->{$term} = $value;
 	}
+print Dumper( $config );
 	return $config;
 }	
+
+sub parseHours 
+{
+	my( $string ) = @_;
+
+	my $hours = {};
+	my @bits = split( /\s*,\s*/, $string );
+	foreach my $bit ( @bits ) {
+		# each bit should be a number or number-numbers
+		$bit =~ s/\s//g;
+		if( $bit=~/^\d+$/ ) {
+			if( $bit > 23 ) {
+				print STDERR "$bit is too big for an hour.\n";
+				return undef;
+			}
+			$hours->{$bit} = 1;
+			next;
+		}
+		if( $bit=~/^(\d+)-(\d+)$/ ) {
+			my $from = $1;
+			my $to = $2;
+			if( $from > 23 ) {
+				print STDERR "$bit is too big for an hour.\n";
+				return undef;
+			}
+			if( $to > 23 ) {
+				print STDERR "$bit is too big for an hour.\n";
+				return undef;
+			}
+			if( $to < $from ) {
+				print STDERR "$bit range has end lower than start.\n";
+				return undef;
+			}
+			for( my $i=$from; $i<=$to; ++$i ) {
+				$hours->{$i} = 1;
+			}
+			next;
+		}
+		print STDERR "$bit isn't a valid hour or range.\n";
+		return undef;
+	}
+
+	return [ sort keys %{$hours} ];
+}
 
 sub parseTime 
 {
