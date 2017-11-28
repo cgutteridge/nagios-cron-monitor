@@ -9,6 +9,8 @@ sub CRITICAL { 2 }
 sub WARNING { 1 } 
 sub OK { 0 }
 sub UNKNOWN { 3 }
+sub IGNOREDMISSING { -1 }
+sub IGNORED { -2 }
 
 # read a directory full of timestamps compared with a directory full of configs
 # should be passed options specifying a time-stamp dir and a config dir
@@ -109,9 +111,9 @@ foreach my $file ( keys %$ages ) {
 	my $config = $configs->{$file};
 	delete $configs->{$file};
 	my $age = $ages->{$file};
-
 	if( defined $config->{IGNORE} ) {
 		# don't actually check timestamps marked IGNORE
+		push @$issues, { file=>$file, code=>IGNORED };
 		next;
 	}
 
@@ -135,26 +137,33 @@ foreach my $file ( keys %$ages ) {
 # only configs left are those without a matching timestamp
 foreach my $file ( keys %$configs ) {
 	my $config = $configs->{$file};
-	if( !defined $config->{"IGNORE-NO-TIMESTAMP"} ) {
+	if( defined $config->{"IGNORE"} ) {
+		push @$issues, { file=>$file, code=>IGNORED };
+	} elsif( defined $config->{"IGNORE-NO-TIMESTAMP"} ) {
+		push @$issues, { file=>$file, code=>IGNOREDMISSING, message=>"No timestamp file for config '$file' (ignored)" };
+	} else {
 		push @$issues, { file=>$file, code=>WARNING, message=>"No timestamp file for config '$file'" };
 	}
 }
 
 my $worst = { code=>OK, message=>"Checked $ok timestamps" };
-my $counts = [0,0,0,0];
+my $counts = { IGNORED=>0, IGNOREDMISSING=>0, OK=>0, WARNING=>0, CRITICAL=>0, UNKNOWN=>0, };
+
 foreach my $issue ( @$issues ) {
-	print STDERR codeLabel( $issue->{code} ).": ".$issue->{message}."\n";
-	$counts->[$issue->{code}]++;	
+	if( defined $issue->{message} ) {
+		print STDERR codeLabel( $issue->{code} ).": ".$issue->{message}."\n";
+	}
+	$counts->{$issue->{code}}++;	
 	if( $issue->{code} > $worst->{code} ) {
 		$worst = $issue;
 	}
 }
 my $extra = "";
-if( $counts->[1]+$counts->[2]+$counts->[3] > 1 ) {
-	if( $counts->[3] > 0 ) { $extra .= ", ".$counts->[3]." UNKNOWN"; }
-	if( $counts->[2] > 0 ) { $extra .= ", ".$counts->[2]." CRITICAL"; }
-	if( $counts->[1] > 0 ) { $extra .= ", ".$counts->[1]." WARNING"; }
-}
+if( $counts->{UNKNOWN} > 0 ) { $extra .= ", ".$counts->{UNKNOWN}." UNKNOWN"; }
+if( $counts->{CRITICAL} > 0 ) { $extra .= ", ".$counts->{CRITICAL}." CRITICAL"; }
+if( $counts->{WARNING} > 0 ) { $extra .= ", ".$counts->{WARNING}." WARNING"; }
+if( $counts->{IGNOREDMISSING} > 0 ) { $extra .= ", ".$counts->{IGNOREDMISSING}." MISSING BUT IGNORED"; }
+if( $counts->{IGNORED} > 0 ) { $extra .= ", ".$counts->{IGNORED}." IGNORED"; }
 
 exitOutcome( $worst->{code}, $worst->{message}.$extra );
 
@@ -337,10 +346,12 @@ sub mtime
 sub codeLabel { 
 	my( $code ) = @_;
 
-	return "OK" if( $code eq "0" );
-	return "WARNING" if( $code eq "1" );
-	return "CRITICAL" if( $code eq "2" );
-	return "UNKNOWN" if( $code eq "3" );
+	return "OK" if( $code eq OK );
+	return "WARNING" if( $code eq WARNING );
+	return "CRITICAL" if( $code eq CRITICAL );
+	return "UNKNOWN" if( $code eq UNKNOWN );
+	return "IGNORED" if( $code eq IGNORED );
+	return "IGNORED-MISSING" if( $code eq IGNOREDMISSING );
 	return undef;
 }
 
