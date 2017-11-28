@@ -159,11 +159,11 @@ foreach my $issue ( @$issues ) {
 	}
 }
 my $extra = "";
-if( $counts->{UNKNOWN} > 0 ) { $extra .= ", ".$counts->{UNKNOWN}." UNKNOWN"; }
-if( $counts->{CRITICAL} > 0 ) { $extra .= ", ".$counts->{CRITICAL}." CRITICAL"; }
-if( $counts->{WARNING} > 0 ) { $extra .= ", ".$counts->{WARNING}." WARNING"; }
-if( $counts->{IGNOREDMISSING} > 0 ) { $extra .= ", ".$counts->{IGNOREDMISSING}." MISSING BUT IGNORED"; }
-if( $counts->{IGNORED} > 0 ) { $extra .= ", ".$counts->{IGNORED}." IGNORED"; }
+if( $counts->{&UNKNOWN} > 0 )        { $extra .= ", ".$counts->{&UNKNOWN}." UNKNOWN"; }
+if( $counts->{&CRITICAL} > 0 )       { $extra .= ", ".$counts->{&CRITICAL}." CRITICAL"; }
+if( $counts->{&WARNING} > 0 )        { $extra .= ", ".$counts->{&WARNING}." WARNING"; }
+if( $counts->{&IGNOREDMISSING} > 0 ) { $extra .= ", ".$counts->{&IGNOREDMISSING}." MISSING BUT IGNORED"; }
+if( $counts->{&IGNORED} > 0 )        { $extra .= ", ".$counts->{&IGNORED}." IGNORED"; }
 
 exitOutcome( $worst->{code}, $worst->{message}.$extra );
 
