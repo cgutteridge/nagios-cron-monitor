@@ -147,7 +147,7 @@ foreach my $file ( keys %$configs ) {
 }
 
 my $worst = { code=>OK, message=>"Checked $ok timestamps" };
-my $counts = { IGNORED=>0, IGNOREDMISSING=>0, OK=>0, WARNING=>0, CRITICAL=>0, UNKNOWN=>0, };
+my $counts = { &IGNORED=>0, &IGNOREDMISSING=>0, &OK=>0, &WARNING=>0, &CRITICAL=>0, &UNKNOWN=>0, };
 
 foreach my $issue ( @$issues ) {
 	if( defined $issue->{message} ) {
