@@ -134,7 +134,10 @@ foreach my $file ( keys %$ages ) {
 }
 # only configs left are those without a matching timestamp
 foreach my $file ( keys %$configs ) {
-	push @$issues, { file=>$file, code=>WARNING, message=>"No timestamp file for config '$file'" };
+	my $config = $configs->{$file};
+	if( !defined $config->{"IGNORE-NO-TIMESTAMP"} ) {
+		push @$issues, { file=>$file, code=>WARNING, message=>"No timestamp file for config '$file'" };
+	}
 }
 
 my $worst = { code=>OK, message=>"Checked $ok timestamps" };
@@ -177,7 +180,7 @@ sub readConfig
 		$line =~ s/\s*#.*$//;
 		next if( $line eq "" );
 
-		my $parsed = $line =~ m/^([A-Z]+)\s*(:\s*(.*))?$/;
+		my $parsed = $line =~ m/^([-A-Z]+)\s*(:\s*(.*))?$/;
 		if( !$parsed ) {
 			print STDERR "Could not parse line $line_number of $filename.\n";
 			return undef;
@@ -185,7 +188,7 @@ sub readConfig
 
 		my( $term, $value ) = ( $1, $3 );
 		# validate line
-		if( $term eq "IGNORE" ) {
+		if( $term eq "IGNORE" || $term eq "IGNORE-NO-TIMESTAMP" ) {
 			if( defined $value ) {
 				# not really a problem so warn to stderr but move on
 				print STDERR "IGNORE does not require a value at line $line_number of $filename.\n";
@@ -225,7 +228,7 @@ sub readConfig
 		}
 		$config->{$term} = $value;
 	}
-print Dumper( $config );
+#print Dumper( $config );
 	return $config;
 }	
 
