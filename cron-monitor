@@ -346,9 +346,9 @@ sub mtime
 sub codeLabel { 
 	my( $code ) = @_;
 
-	return "OK" if( $code eq OK );
-	return "WARNING" if( $code eq WARNING );
-	return "CRITICAL" if( $code eq CRITICAL );
+	return "$code | OK" if( $code eq OK );
+	return "$code | WARNING" if( $code eq WARNING );
+	return "$code | CRITICAL" if( $code eq CRITICAL );
 	return "UNKNOWN" if( $code eq UNKNOWN );
 	return "IGNORED" if( $code eq IGNORED );
 	return "IGNORED-MISSING" if( $code eq IGNOREDMISSING );
