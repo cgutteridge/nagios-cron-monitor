@@ -15,6 +15,7 @@ sub IGNORED { -2 }
 # read a directory full of timestamps compared with a directory full of configs
 # should be passed options specifying a time-stamp dir and a config dir
 
+# add --all to show all issues, not just one of the worst
 
 # Config format. 
 # UTF-8 assumed.
@@ -37,11 +38,22 @@ sub IGNORED { -2 }
 
 my $issues = [];
 
-if( scalar @ARGV != 2 ) {
+my $opts = {};
+my @args = ();
+foreach my $arg ( @ARGV ) {
+	if( $arg =~ m/^--/ ) {
+		$opts->{$arg} = 1;
+	} else {
+		push @args, $arg;
+	}
+}
+
+
+if( scalar @args != 2 ) {
 	exitOutcome( CRITICAL, "[sys] Command expects two directories to be specified" );
 }	
 
-my( $tdir, $cdir ) = @ARGV;
+my( $tdir, $cdir ) = @args;
 if( !-d $tdir ) { 
 	exitOutcome( CRITICAL, "[sys] Timestamp directory '$tdir' is not a directory" );
 }	
@@ -150,7 +162,7 @@ my $worst = { code=>OK, message=>"Checked $ok timestamps" };
 my $counts = { &IGNORED=>0, &IGNOREDMISSING=>0, &OK=>0, &WARNING=>0, &CRITICAL=>0, &UNKNOWN=>0, };
 
 foreach my $issue ( @$issues ) {
-	if( defined $issue->{message} ) {
+	if( defined $issue->{message} && defined $opts->{all} ) {
 		print STDERR codeLabel( $issue->{code} ).": ".$issue->{message}."\n";
 	}
 	$counts->{$issue->{code}}++;	
@@ -165,6 +177,7 @@ if( $counts->{&WARNING} > 0 )        { $extra .= ", ".$counts->{&WARNING}." WARN
 if( $counts->{&IGNOREDMISSING} > 0 ) { $extra .= ", ".$counts->{&IGNOREDMISSING}." MISSING BUT IGNORED"; }
 if( $counts->{&IGNORED} > 0 )        { $extra .= ", ".$counts->{&IGNORED}." IGNORED"; }
 
+if( defined $opts->{all} ) { print "--\nNagios output:\n"; }
 exitOutcome( $worst->{code}, $worst->{message}.$extra );
 
 exit 0;
