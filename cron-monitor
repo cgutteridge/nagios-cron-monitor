@@ -41,7 +41,7 @@ my $issues = [];
 my $opts = {};
 my @args = ();
 foreach my $arg ( @ARGV ) {
-	if( $arg =~ s/^--/// ) {
+	if( $arg =~ s/^--// ) {
 		$opts->{$arg} = 1;
 	} else {
 		push @args, $arg;
